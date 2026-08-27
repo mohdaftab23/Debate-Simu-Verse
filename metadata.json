@@ -1,0 +1,6 @@
+{
+  "name": "ChronosSim - Multi-Agent Alternate Reality Laboratory",
+  "description": "A multi-agent counterfactual reasoning laboratory where 4 specialized AI agents (Historian, Economist, Geopolitician, Futurist) independently research, debate, and synthesize structured alternate world simulations with interactive maps and timelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
