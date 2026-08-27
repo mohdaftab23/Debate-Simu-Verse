@@ -166,16 +166,16 @@ apiRouter.get('/simulations', (req: Request, res: Response) => {
 // Start new simulation
 apiRouter.post('/simulations/start', async (req: Request, res: Response) => {
   try {
-    const config: SimulationConfig = req.body.config;
+    const config: SimulationConfig = req.body?.config || req.body;
     if (!config || !config.scenarioTitle) {
       return res.status(400).json({ success: false, error: 'Scenario title is required.' });
     }
 
     const simulation = await simulationService.startSimulation(config);
-    res.json({ success: true, simulation });
+    return res.json({ success: true, simulation });
   } catch (err: any) {
     console.error('Error starting simulation:', err);
-    res.status(500).json({ success: false, error: err?.message || 'Failed to start simulation' });
+    return res.status(500).json({ success: false, error: err?.message || 'Failed to start simulation' });
   }
 });
 

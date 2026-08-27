@@ -324,14 +324,30 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config: enrichedConfig })
       });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const rawText = await res.text();
+        throw new Error(
+          rawText.length > 0 && !rawText.startsWith('<!') && !rawText.startsWith('The page')
+            ? rawText.slice(0, 150)
+            : `API server returned HTTP ${res.status} (${res.statusText || 'Non-JSON response'})`
+        );
+      }
+
       const data = await res.json();
-      if (data.success && data.simulation) {
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Server returned error status ${res.status}`);
+      }
+
+      if (data.simulation) {
         setSimulation(data.simulation);
         saveToHistory(data.simulation);
         setActiveTab('research');
       }
     } catch (err: any) {
-      alert(`Simulation initialization failed: ${err?.message || err}`);
+      console.error('Simulation start error:', err);
+      alert(`Simulation initialization error: ${err?.message || err}`);
     } finally {
       setIsStarting(false);
       fetchSystemStatus();

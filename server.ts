@@ -25,6 +25,20 @@ async function startAppServer() {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
 
+  // Strict API 404 handler (prevents /api/* requests from falling through to Vite HTML middleware)
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ success: false, error: `API route ${req.method} ${req.originalUrl} not found` });
+  });
+
+  // API error handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith('/api')) {
+      console.error('[Chronos API Error]:', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+    }
+    next(err);
+  });
+
   if (!isProd) {
     // Development mode with Vite middleware
     const { createServer: createViteServer } = await import('vite');
