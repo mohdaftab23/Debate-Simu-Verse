@@ -1,5 +1,5 @@
 import { SimulationConfig, SelectedExpertConfig, EXPERT_ROLE_REGISTRY, getExpertMeta } from '../../shared/types.ts';
-import { geminiPool } from '../geminiPool.ts';
+import { aiProviderManager } from '../providers/aiProviderManager.ts';
 
 export interface ExpertSuggestionResult {
   suggestedExperts: Array<{
@@ -17,12 +17,14 @@ export async function suggestExpertsForScenario(params: {
   scenarioDescription: string;
   count?: number;
   modelName?: string;
+  provider?: any;
+  userKeys?: any;
 }): Promise<ExpertSuggestionResult> {
   const count = Math.min(5, Math.max(2, params.count || 4));
   const text = `${params.scenarioTitle} ${params.scenarioDescription}`.toLowerCase();
 
   try {
-    if (geminiPool.isMockMode()) {
+    if (aiProviderManager.isMockMode() && !params.userKeys) {
       return getHeuristicExpertSuggestions(params.scenarioTitle, params.scenarioDescription, count);
     }
 
@@ -60,11 +62,13 @@ Description: "${params.scenarioDescription}"
 
 Recommend the best ${count} experts.`;
 
-    const result = await geminiPool.generateJSON<ExpertSuggestionResult>({
+    const result = await aiProviderManager.generateJSON<ExpertSuggestionResult>({
       role: 'synthesizer',
       prompt,
       systemInstruction,
-      model: params.modelName || 'gemini-3.7-flash'
+      provider: params.provider || 'gemini',
+      model: params.modelName || 'gemini-3.7-flash',
+      userKeys: params.userKeys
     });
 
     if (result.data?.suggestedExperts && result.data.suggestedExperts.length >= 2) {

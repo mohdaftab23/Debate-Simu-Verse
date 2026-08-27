@@ -34,13 +34,19 @@ import {
   CommunicationStyle, 
   SelectedExpertConfig, 
   EXPERT_ROLE_REGISTRY, 
-  getExpertMeta 
+  getExpertMeta,
+  ProviderType
 } from '../../shared/types.ts';
 import { CoverArtGenerator } from './CoverArtGenerator.tsx';
+import { Key } from 'lucide-react';
 
 interface ScenarioInputProps {
   onStartSimulation: (config: SimulationConfig) => void;
   isLoading?: boolean;
+  onOpenKeyModal?: () => void;
+  userKeys?: Partial<Record<ProviderType, string>>;
+  selectedProvider?: ProviderType;
+  selectedModel?: string;
 }
 
 const INSPIRATION_IDEAS = [
@@ -112,8 +118,15 @@ const COMMUNICATION_STYLES: Array<{ id: CommunicationStyle; label: string; desc:
 
 export const ScenarioInput: React.FC<ScenarioInputProps> = ({
   onStartSimulation,
-  isLoading = false
+  isLoading = false,
+  onOpenKeyModal,
+  userKeys,
+  selectedProvider = 'gemini',
+  selectedModel = 'gemini-3.7-flash'
 }) => {
+  const hasConfiguredKey = Object.values(userKeys || {}).some(
+    k => typeof k === 'string' && k.trim().length > 0
+  );
   const [selectedPreset, setSelectedPreset] = useState<PresetScenario | null>(PRESET_SCENARIOS[0]);
   const [scenarioTitle, setScenarioTitle] = useState(PRESET_SCENARIOS[0].title);
   const [scenarioDescription, setScenarioDescription] = useState(PRESET_SCENARIOS[0].description);
@@ -341,7 +354,9 @@ export const ScenarioInput: React.FC<ScenarioInputProps> = ({
       showDebate,
       debateDetailLevel,
       autoSelectExperts,
-      modelName: 'gemini-3.7-flash',
+      provider: selectedProvider,
+      modelName: selectedModel,
+      userKeys: userKeys,
       coverArtUrl,
       coverArtStyle,
       coverArtPrompt
@@ -363,6 +378,49 @@ export const ScenarioInput: React.FC<ScenarioInputProps> = ({
         <p className="text-sm sm:text-base text-[#8E8B82] max-w-2xl mx-auto leading-relaxed">
           Formulate ANY counterfactual scenario. Assemble custom expert cohorts, map LLM models, and observe Bayesian multi-agent debates synthesizing an internally consistent reality.
         </p>
+      </div>
+
+      {/* AI Key Configuration Banner */}
+      <div className="mb-6">
+        {hasConfiguredKey ? (
+          <div className="p-3.5 bg-[#0E2017] border border-[#2D6A4F] rounded-xl flex items-center justify-between gap-3 text-xs shadow-lg">
+            <div className="flex items-center gap-2.5 text-[#52B788]">
+              <CheckCircle2 className="w-4 h-4 text-[#52B788] shrink-0" />
+              <span>
+                <strong className="text-white">AI Key Configured & Active:</strong> Using <span className="capitalize font-bold text-[#52B788]">{selectedProvider}</span> (<span className="font-mono text-white">{selectedModel}</span>). Your simulations will run using your configured API key.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenKeyModal}
+              className="px-3 py-1.5 bg-[#132A1F] hover:bg-[#1C3D2C] text-[#52B788] border border-[#2D6A4F] rounded-lg text-xs font-semibold cursor-pointer transition-colors shrink-0"
+            >
+              Configure / Switch Key
+            </button>
+          </div>
+        ) : (
+          <div className="p-4 bg-[#17140E] border border-[#C5A059]/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xl">
+            <div className="flex items-center gap-3 text-[#E6D5B8]">
+              <div className="w-8 h-8 rounded-lg bg-[#C5A059]/15 border border-[#C5A059]/40 flex items-center justify-center text-[#C5A059] shrink-0">
+                <Key className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-white font-bold text-xs">Add Your AI API Key to Unlock Live Simulations</div>
+                <div className="text-[#8E8B82] text-[11px]">
+                  Provide a Google Gemini, OpenAI, or Anthropic API key to generate live multi-agent historical projections.
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenKeyModal}
+              className="px-4 py-2 bg-[#C5A059] hover:bg-[#D4AF37] text-black font-bold rounded-lg text-xs uppercase tracking-wider cursor-pointer shadow-md transition-all shrink-0 flex items-center justify-center gap-1.5"
+            >
+              <Key className="w-3.5 h-3.5 fill-black" />
+              <span>Add Your Key</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Quick Inspiration Idea Chips */}

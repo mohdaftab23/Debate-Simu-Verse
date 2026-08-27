@@ -4,6 +4,44 @@ export type RigorLevel = 'strict_causality' | 'plausible_extrapolation' | 'rigor
 
 export type CreativityScore = 1 | 2 | 3 | 4 | 5;
 
+export type ProviderType = 'gemini' | 'openai' | 'anthropic' | 'custom';
+
+export interface ProviderModelDef {
+  id: string;
+  name: string;
+  provider: ProviderType;
+  description: string;
+  isDefault?: boolean;
+}
+
+export interface UserProviderKeyConfig {
+  provider: ProviderType;
+  apiKey: string; // Stored in client session / local storage
+  selectedModel: string;
+  customModelId?: string;
+  status: 'connected' | 'untested' | 'invalid' | 'testing';
+  lastTestedAt?: string;
+  errorMessage?: string;
+}
+
+export interface BudgetConfig {
+  maxApiCalls: number; // e.g. 10, 15, 25, 50
+  maxDebateRounds: number; // 1, 2, 3, 4
+  maxOutputLength: 'short' | 'medium' | 'long';
+  fallbackProvider?: ProviderType | 'none';
+  enableCostProtection: boolean;
+}
+
+export interface WorkloadEstimate {
+  expertCount: number;
+  researchCalls: number;
+  debateRounds: number;
+  estimatedDebateCalls: string;
+  synthesisCalls: number;
+  estimatedTotalCalls: string;
+  complexity: 'Low' | 'Medium' | 'High';
+}
+
 export type StandardExpertRole =
   | 'historian'
   | 'economist'
@@ -46,7 +84,9 @@ export interface SelectedExpertConfig {
   name: string;
   title: string;
   specialty: string;
+  provider?: ProviderType;
   modelName: string;
+  assignedKeySlot?: string;
   enabled: boolean;
   isCustom?: boolean;
   customDef?: CustomExpertDef;
@@ -413,6 +453,9 @@ export interface SimulationConfig {
   showDebate?: boolean;
   debateDetail?: 'minimal' | 'standard' | 'full';
   modelName: string;
+  provider?: ProviderType;
+  userKeys?: Partial<Record<ProviderType, string>>;
+  budgetConfig?: BudgetConfig;
   coverArtUrl?: string;
   coverArtStyle?: string;
   coverArtPrompt?: string;
@@ -421,6 +464,9 @@ export interface SimulationConfig {
 export interface ResearchPacket {
   agent: AgentRole;
   agentName: string;
+  provider?: ProviderType;
+  modelName?: string;
+  fallbackUsed?: boolean;
   thesis: string;
   divergenceMechanism: string;
   keyAssumptions: string[];
@@ -472,6 +518,9 @@ export interface DebateMessage {
   round: number;
   agent: AgentRole;
   agentName: string;
+  provider?: ProviderType;
+  modelName?: string;
+  fallbackUsed?: boolean;
   type: DebateMessageType;
   targetAgent?: AgentRole;
   targetClaim?: string;
@@ -568,6 +617,8 @@ export interface TimelineEvent {
   causeRef?: string;
   agentAgreementLevel: 'full' | 'majority' | 'contested';
   confidence: number;
+  economicStability?: number; // 0-100 metric index
+  societalHarmony?: number; // 0-100 metric index
 }
 
 export interface CausalNode {

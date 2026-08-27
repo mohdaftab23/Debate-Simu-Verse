@@ -8,7 +8,7 @@ import {
   SelectedExpertConfig, 
   getExpertMeta 
 } from '../../shared/types.ts';
-import { geminiPool } from '../geminiPool.ts';
+import { aiProviderManager } from '../providers/aiProviderManager.ts';
 import { getAgentSystemInstruction, buildDebatePrompt } from './agentPrompts.ts';
 import { generateHeuristicParsedScenario } from './scenarioParser.ts';
 
@@ -27,10 +27,10 @@ export async function runDebateRound(params: {
   const cohort: SelectedExpertConfig[] = (params.config.expertCohort && params.config.expertCohort.length > 0)
     ? params.config.expertCohort.filter(e => e.enabled)
     : [
-        { slotId: 'slot_1', roleId: 'historian', name: 'Dr. Alistair Vance', title: 'Senior Historical Causality Analyst', specialty: 'Divergence mechanics & institutional continuity', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_2', roleId: 'economist', name: 'Elena Rostova, Ph.D.', title: 'Macroeconomic & Trade Systems Modeler', specialty: 'Resource flows & production capacity', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_3', roleId: 'geopolitician', name: 'Cmdr. Marcus Sterling', title: 'Strategic Security Analyst', specialty: 'Sovereign entities & flashpoint conflicts', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_4', roleId: 'futurist', name: 'Dr. Maya Lin-Chen', title: 'Techno-Societal Evolution Strategist', specialty: 'Scientific paradigms & cultural shifts', modelName: 'gemini-3.7-flash', enabled: true }
+        { slotId: 'slot_1', roleId: 'historian', name: 'Dr. Alistair Vance', title: 'Senior Historical Causality Analyst', specialty: 'Divergence mechanics & institutional continuity', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true },
+        { slotId: 'slot_2', roleId: 'economist', name: 'Elena Rostova, Ph.D.', title: 'Macroeconomic & Trade Systems Modeler', specialty: 'Resource flows & production capacity', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true },
+        { slotId: 'slot_3', roleId: 'geopolitician', name: 'Cmdr. Marcus Sterling', title: 'Strategic Security Analyst', specialty: 'Sovereign entities & flashpoint conflicts', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true },
+        { slotId: 'slot_4', roleId: 'futurist', name: 'Dr. Maya Lin-Chen', title: 'Techno-Societal Evolution Strategist', specialty: 'Scientific paradigms & cultural shifts', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true }
       ];
 
   const expertCount = Math.min(5, Math.max(2, cohort.length));
@@ -66,9 +66,11 @@ export async function runDebateRound(params: {
     const meta = getExpertMeta(roleId, expert.customDef);
     const packet = params.researchPackets[roleId];
     const targetExpert = activeCohort[(idx + 1) % activeCohort.length];
+    const expertProvider = expert.provider || params.config.provider || 'gemini';
+    const expertModel = expert.modelName || params.config.modelName || 'gemini-3.7-flash';
 
     try {
-      if (geminiPool.isMockMode()) {
+      if (aiProviderManager.isMockMode()) {
         await new Promise(r => setTimeout(r, 350 + Math.random() * 200));
         const mockMsg = generateDynamicDebateMessage({
           expert,
@@ -79,6 +81,8 @@ export async function runDebateRound(params: {
           parsedScenario: parsed,
           priorMessages: [...params.priorMessages, ...roundMessages]
         });
+        mockMsg.provider = expertProvider;
+        mockMsg.modelName = expertModel;
         roundMessages.push(mockMsg);
         params.onMessageGenerated(mockMsg);
         params.onLog?.(roleId, `[${mockMsg.status?.toUpperCase() || 'DEBATE'}] ${mockMsg.claim}`, 'debate');
@@ -103,12 +107,14 @@ export async function runDebateRound(params: {
 
       const systemInstruction = getAgentSystemInstruction(expert, params.config.communicationStyle);
 
-      const result = await geminiPool.generateJSON<Partial<DebateMessage>>({
+      const result = await aiProviderManager.generateJSON<Partial<DebateMessage>>({
         role: roleId,
-        slotId: expert.slotId,
         prompt,
         systemInstruction,
-        model: expert.modelName || params.config.modelName || 'gemini-3.7-flash'
+        provider: expertProvider,
+        model: expertModel,
+        userKeys: params.config.userKeys,
+        budgetConfig: params.config.budgetConfig
       });
 
       const rawStatus = result.data.status;
@@ -121,6 +127,9 @@ export async function runDebateRound(params: {
         round: params.round,
         agent: roleId,
         agentName: packet?.agentName || meta.name,
+        provider: result.provider,
+        modelName: result.model,
+        fallbackUsed: result.fallbackUsed,
         type: (result.data.type as any) || (params.round === 1 ? 'claim' : params.round === 2 ? 'critique' : 'defense'),
         status,
         targetAgent: (result.data.targetAgent as any) || targetExpert.roleId,
@@ -153,6 +162,8 @@ export async function runDebateRound(params: {
         parsedScenario: parsed,
         priorMessages: [...params.priorMessages, ...roundMessages]
       });
+      fallbackMsg.provider = expertProvider;
+      fallbackMsg.modelName = expertModel;
       roundMessages.push(fallbackMsg);
       params.onMessageGenerated(fallbackMsg);
       params.onLog?.(roleId, `[${fallbackMsg.status?.toUpperCase() || 'DEBATE'}] ${fallbackMsg.claim}`, 'debate');

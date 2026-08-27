@@ -14,9 +14,11 @@ import {
   Sliders,
   Users,
   ShieldCheck,
-  BookOpen
+  BookOpen,
+  Key,
+  CheckCircle2
 } from 'lucide-react';
-import { Simulation, getExpertMeta } from '../../shared/types.ts';
+import { Simulation, getExpertMeta, ProviderType } from '../../shared/types.ts';
 
 interface HeaderProps {
   simulation: Simulation | null;
@@ -30,6 +32,10 @@ interface HeaderProps {
   systemStatus: any;
   onExport: () => void;
   onOpenHistory: () => void;
+  onOpenKeyModal?: () => void;
+  userKeys?: Partial<Record<ProviderType, string>>;
+  selectedProvider?: ProviderType;
+  selectedModel?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -43,11 +49,19 @@ export const Header: React.FC<HeaderProps> = ({
   mockMode,
   systemStatus,
   onExport,
-  onOpenHistory
+  onOpenHistory,
+  onOpenKeyModal,
+  userKeys,
+  selectedProvider = 'gemini',
+  selectedModel
 }) => {
   const status = simulation?.status || 'idle';
   const worldName = simulation?.worldState?.finalWorldName;
   const config = simulation?.config;
+
+  const hasConfiguredKey = Object.values(userKeys || {}).some(
+    k => typeof k === 'string' && k.trim().length > 0
+  );
 
   const getStatusBadge = () => {
     switch (status) {
@@ -138,14 +152,38 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Center Status Indicators */}
-        <div className="hidden lg:flex items-center gap-3">
-          {getStatusBadge()}
-          
-          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-[#888] font-mono bg-[#141414] px-2.5 py-1 rounded-lg border border-[#2A2D32]">
-            <Sparkles className="w-3 h-3 text-[#C5A059]" />
-            <span className="text-[#E0E0E0] font-semibold">{systemStatus?.defaultModel || 'gemini-3.7-flash'}</span>
+        {/* Center / Key Configuration Trigger Button */}
+        <div className="flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2">
+            {getStatusBadge()}
           </div>
+
+          {/* Upside Key Button: 'Add Your Key' (if unset) or '✓ Key Configured' (if set) */}
+          <button
+            onClick={onOpenKeyModal}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+              hasConfiguredKey
+                ? 'bg-[#0E2017] hover:bg-[#152E22] text-[#52B788] border-[#2D6A4F]/80'
+                : 'bg-[#C5A059]/15 hover:bg-[#C5A059]/25 text-[#C5A059] border-[#C5A059]/60 animate-pulse'
+            }`}
+            title={hasConfiguredKey ? `AI Key Configured for ${selectedProvider} (${selectedModel || 'active'})` : 'Click to Add Your AI API Key'}
+          >
+            {hasConfiguredKey ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#52B788]" />
+                <span className="font-mono capitalize font-bold">
+                  {selectedProvider} Key Configured
+                </span>
+              </>
+            ) : (
+              <>
+                <Key className="w-3.5 h-3.5 text-[#C5A059]" />
+                <span className="uppercase font-bold tracking-wider">
+                  Add Your Key
+                </span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Right Controls */}

@@ -1,5 +1,5 @@
 import { ParsedScenarioModel, SimulationConfig } from '../../shared/types.ts';
-import { geminiPool } from '../geminiPool.ts';
+import { aiProviderManager } from '../providers/aiProviderManager.ts';
 
 export async function parseScenarioAndAssumptions(params: {
   config: SimulationConfig;
@@ -11,7 +11,7 @@ export async function parseScenarioAndAssumptions(params: {
   const startTime = Date.now();
 
   try {
-    if (geminiPool.isMockMode()) {
+    if (aiProviderManager.isMockMode()) {
       await new Promise(r => setTimeout(r, 400 + Math.random() * 300));
       const model = generateHeuristicParsedScenario(config);
       onLog?.(`Constructed foundational assumption matrix (${model.requiredAssumptions.length} prerequisites, ${model.affectedDomains.length} affected domains, bounded against ${model.unaffectedDomains.length} invariant systems)`, 'success');
@@ -99,11 +99,14 @@ Produce a JSON object with this exact structure:
   }
 }`;
 
-    const result = await geminiPool.generateJSON<ParsedScenarioModel>({
+    const result = await aiProviderManager.generateJSON<ParsedScenarioModel>({
       role: 'synthesizer',
       prompt,
       systemInstruction,
-      model: config.modelName || 'gemini-3.7-flash'
+      provider: config.provider || 'gemini',
+      model: config.modelName || 'gemini-3.7-flash',
+      userKeys: config.userKeys,
+      budgetConfig: config.budgetConfig
     });
 
     const parsed: ParsedScenarioModel = {

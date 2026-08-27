@@ -8,7 +8,7 @@ import {
   WorldState, 
   getExpertMeta 
 } from '../../shared/types.ts';
-import { geminiPool } from '../geminiPool.ts';
+import { aiProviderManager } from '../providers/aiProviderManager.ts';
 import { getAgentSystemInstruction, buildSynthesisPrompt } from './agentPrompts.ts';
 import { generateHeuristicParsedScenario } from './scenarioParser.ts';
 
@@ -26,7 +26,7 @@ export async function runWorldSynthesis(params: {
   const startTime = Date.now();
 
   try {
-    if (geminiPool.isMockMode()) {
+    if (aiProviderManager.isMockMode()) {
       await new Promise(r => setTimeout(r, 600 + Math.random() * 300));
       const mockWorld = generateMockWorldState(params.config, params.researchPackets, parsed);
       params.onLog?.('synthesizer', `Formal World State synthesized in ${Date.now() - startTime}ms: "${mockWorld.finalWorldName}" (${mockWorld.countries.length} sovereign factions modeled)`, 'success');
@@ -43,15 +43,24 @@ export async function runWorldSynthesis(params: {
 
     const systemInstruction = getAgentSystemInstruction('synthesizer', params.config.communicationStyle);
 
-    const result = await geminiPool.generateJSON<WorldState>({
+    const result = await aiProviderManager.generateJSON<WorldState>({
       role: 'synthesizer',
       prompt,
       systemInstruction,
       useHighThinking: true,
-      model: process.env.SYNTHESIS_MODEL_NAME || params.config.modelName || 'gemini-3.7-flash'
+      provider: params.config.provider || 'gemini',
+      model: process.env.SYNTHESIS_MODEL_NAME || params.config.modelName || 'gemini-3.7-flash',
+      userKeys: params.config.userKeys,
+      budgetConfig: params.config.budgetConfig
     });
 
     // Ensure all critical fields are present with fallbacks
+    const timelineWithMetrics = (result.data.timeline || []).map((t, idx, arr) => ({
+      ...t,
+      economicStability: typeof t.economicStability === 'number' ? t.economicStability : Math.min(95, Math.max(30, 60 + Math.sin(idx * 1.5) * 20)),
+      societalHarmony: typeof t.societalHarmony === 'number' ? t.societalHarmony : Math.min(95, Math.max(30, 65 + Math.cos(idx * 1.2) * 18))
+    }));
+
     const world: WorldState = {
       id: `world_${Date.now()}`,
       finalWorldName: result.data.finalWorldName || `Alternate Reality: ${params.config.scenarioTitle}`,
@@ -78,7 +87,7 @@ export async function runWorldSynthesis(params: {
         alternativeTechnologicalPaths: []
       },
       culturalSocietalEvolution: result.data.culturalSocietalEvolution || [],
-      timeline: result.data.timeline || [],
+      timeline: timelineWithMetrics.length > 0 ? timelineWithMetrics : generateDefaultTimeline(params.config),
       causalGraph: result.data.causalGraph || [],
       uncertaintiesAndCaveats: result.data.uncertaintiesAndCaveats || parsed.uncertainties,
       unaffectedSystems: result.data.unaffectedSystems || parsed.unaffectedDomains,
@@ -105,6 +114,50 @@ export async function runWorldSynthesis(params: {
     params.onLog?.('synthesizer', `Formal World State synthesized in ${Date.now() - startTime}ms: "${mockWorld.finalWorldName}" (${mockWorld.countries.length} sovereign factions modeled)`, 'success');
     return mockWorld;
   }
+}
+
+function generateDefaultTimeline(config: SimulationConfig) {
+  const start = config.startingYear || 1900;
+  const end = config.endYear || 2026;
+  const span = Math.max(10, end - start);
+  return [
+    {
+      id: 'tl_divergence',
+      year: start,
+      title: `Inflection Point: ${config.scenarioTitle.slice(0, 40)}`,
+      category: 'divergence' as const,
+      description: `Immediate structural divergence from baseline causality.`,
+      primaryRegion: 'Primary Zone',
+      agentAgreementLevel: 'full' as const,
+      confidence: 95,
+      economicStability: 55,
+      societalHarmony: 60
+    },
+    {
+      id: 'tl_consolidation',
+      year: Math.round(start + span * 0.35),
+      title: 'Macroeconomic Realignment & Technological Shift',
+      category: 'technological' as const,
+      description: 'Institutions codify new operating paradigms.',
+      primaryRegion: 'Global Trade Hubs',
+      agentAgreementLevel: 'majority' as const,
+      confidence: 88,
+      economicStability: 72,
+      societalHarmony: 68
+    },
+    {
+      id: 'tl_equilibrium',
+      year: end,
+      title: `Mature Equilibrium Order (${end})`,
+      category: 'political' as const,
+      description: 'Long-term multi-bloc equilibrium achieved.',
+      primaryRegion: 'Domain Scope',
+      agentAgreementLevel: 'full' as const,
+      confidence: 91,
+      economicStability: 84,
+      societalHarmony: 81
+    }
+  ];
 }
 
 export function generateMockWorldState(

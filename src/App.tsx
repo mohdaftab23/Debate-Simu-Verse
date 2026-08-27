@@ -14,19 +14,108 @@ import { DebugDrawer } from './client/components/DebugDrawer.tsx';
 import { LiveEventLog } from './client/components/LiveEventLog.tsx';
 import { HistoryView } from './client/components/HistoryView.tsx';
 import { ExportModal } from './client/components/ExportModal.tsx';
-import { Simulation, SimulationConfig } from './shared/types.ts';
+import { AIProviderSetup } from './client/components/AIProviderSetup.tsx';
+import { Simulation, SimulationConfig, ProviderType, BudgetConfig } from './shared/types.ts';
 import { PRESET_SCENARIOS } from './shared/presets.ts';
 
 const STORAGE_KEY = 'chronos_simulations_history';
+const KEYS_STORAGE_KEY = 'chronos_user_ai_keys';
+const PROVIDER_STORAGE_KEY = 'chronos_active_provider';
+const MODEL_STORAGE_KEY = 'chronos_active_model';
+const BUDGET_STORAGE_KEY = 'chronos_budget_config';
 
 export function App() {
   const [simulation, setSimulation] = useState<Simulation | null>(null);
   const [activeTab, setActiveTab] = useState<string>('input');
   const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
+  const [isProviderModalOpen, setIsProviderModalOpen] = useState<boolean>(false);
   const [systemStatus, setSystemStatus] = useState<any>(null);
   const [isStarting, setIsStarting] = useState<boolean>(false);
   const [historyList, setHistoryList] = useState<Simulation[]>([]);
+
+  // BYOK Provider Keys & Budget State
+  const [userKeys, setUserKeys] = useState<Partial<Record<ProviderType, string>>>(() => {
+    try {
+      const saved = localStorage.getItem(KEYS_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [selectedProvider, setSelectedProvider] = useState<ProviderType>(() => {
+    try {
+      const saved = localStorage.getItem(PROVIDER_STORAGE_KEY);
+      return (saved as ProviderType) || 'gemini';
+    } catch {
+      return 'gemini';
+    }
+  });
+
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+      return saved || 'gemini-3.7-flash';
+    } catch {
+      return 'gemini-3.7-flash';
+    }
+  });
+
+  const [budgetConfig, setBudgetConfig] = useState<BudgetConfig>(() => {
+    try {
+      const saved = localStorage.getItem(BUDGET_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {
+        maxApiCalls: 15,
+        maxDebateRounds: 3,
+        maxOutputLength: 'medium',
+        fallbackProvider: 'none',
+        enableCostProtection: true
+      };
+    } catch {
+      return {
+        maxApiCalls: 15,
+        maxDebateRounds: 3,
+        maxOutputLength: 'medium',
+        fallbackProvider: 'none',
+        enableCostProtection: true
+      };
+    }
+  });
+
+  // Handle saving keys
+  const handleSaveKeys = (keys: Partial<Record<ProviderType, string>>, budget?: BudgetConfig) => {
+    setUserKeys(keys);
+    try {
+      localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(keys));
+    } catch (e) {
+      console.warn('Failed to save keys to localStorage', e);
+    }
+    if (budget) {
+      setBudgetConfig(budget);
+      try {
+        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budget));
+      } catch (e) {
+        console.warn('Failed to save budget to localStorage', e);
+      }
+    }
+  };
+
+  const handleSelectProvider = (provider: ProviderType) => {
+    setSelectedProvider(provider);
+    try {
+      localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
+    } catch (e) {
+      console.warn('Failed to save provider to localStorage', e);
+    }
+    const defaultModel = provider === 'openai' ? 'gpt-4o' : provider === 'anthropic' ? 'claude-3-7-sonnet-20250219' : 'gemini-3.7-flash';
+    setSelectedModel(defaultModel);
+    try {
+      localStorage.setItem(MODEL_STORAGE_KEY, defaultModel);
+    } catch (e) {
+      console.warn('Failed to save model to localStorage', e);
+    }
+  };
 
   // Load simulations from server & localStorage
   useEffect(() => {
@@ -222,11 +311,18 @@ export function App() {
 
   const handleStartSimulation = async (config: SimulationConfig) => {
     setIsStarting(true);
+    const enrichedConfig: SimulationConfig = {
+      ...config,
+      userKeys: config.userKeys || userKeys,
+      provider: config.provider || selectedProvider,
+      modelName: config.modelName || selectedModel,
+      budgetConfig: config.budgetConfig || budgetConfig
+    };
     try {
       const res = await fetch('/api/simulations/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config })
+        body: JSON.stringify({ config: enrichedConfig })
       });
       const data = await res.json();
       if (data.success && data.simulation) {
@@ -251,17 +347,20 @@ export function App() {
       endYear: defaultPreset.endYear,
       geographicScope: defaultPreset.geographicScope,
       expertCohort: [
-        { slotId: 'slot_1', roleId: 'historian', name: 'Dr. Alistair Vance', title: 'Senior Historical Causality Analyst', specialty: 'Divergence mechanics', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_2', roleId: 'economist', name: 'Elena Rostova, Ph.D.', title: 'Macroeconomic Systems Modeler', specialty: 'Production & trade', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_3', roleId: 'geopolitician', name: 'Cmdr. Marcus Sterling', title: 'Strategic Security Analyst', specialty: 'Sovereign entities', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_4', roleId: 'futurist', name: 'Dr. Maya Lin-Chen', title: 'Techno-Societal Strategist', specialty: 'Scientific paradigms', modelName: 'gemini-3.7-flash', enabled: true }
+        { slotId: 'slot_1', roleId: 'historian', name: 'Dr. Alistair Vance', title: 'Senior Historical Causality Analyst', specialty: 'Divergence mechanics', modelName: selectedModel, enabled: true },
+        { slotId: 'slot_2', roleId: 'economist', name: 'Elena Rostova, Ph.D.', title: 'Macroeconomic Systems Modeler', specialty: 'Production & trade', modelName: selectedModel, enabled: true },
+        { slotId: 'slot_3', roleId: 'geopolitician', name: 'Cmdr. Marcus Sterling', title: 'Strategic Security Analyst', specialty: 'Sovereign entities', modelName: selectedModel, enabled: true },
+        { slotId: 'slot_4', roleId: 'futurist', name: 'Dr. Maya Lin-Chen', title: 'Techno-Societal Strategist', specialty: 'Scientific paradigms', modelName: selectedModel, enabled: true }
       ],
       agentCount: 4,
       debateRounds: 3,
       creativityLevel: 'balanced',
       realismLevel: 'plausible_extrapolation',
       communicationStyle: 'general',
-      modelName: 'gemini-3.7-flash'
+      provider: selectedProvider,
+      modelName: selectedModel,
+      userKeys: userKeys,
+      budgetConfig: budgetConfig
     });
   };
 
@@ -311,7 +410,10 @@ export function App() {
     const newConfig: SimulationConfig = {
       ...simulation.config,
       scenarioTitle: `${simulation.config.scenarioTitle} [Branch: ${branchName}]`,
-      scenarioDescription: `${simulation.config.scenarioDescription}\n\nFORKED DIVERGENCE: ${keyDivergence}`
+      scenarioDescription: `${simulation.config.scenarioDescription}\n\nFORKED DIVERGENCE: ${keyDivergence}`,
+      userKeys: userKeys,
+      provider: selectedProvider,
+      modelName: selectedModel
     };
     handleStartSimulation(newConfig);
   };
@@ -331,6 +433,10 @@ export function App() {
         systemStatus={systemStatus}
         onExport={() => setIsExportOpen(true)}
         onOpenHistory={() => setActiveTab('history')}
+        onOpenKeyModal={() => setIsProviderModalOpen(true)}
+        userKeys={userKeys}
+        selectedProvider={selectedProvider}
+        selectedModel={selectedModel}
       />
 
       {/* Stage Progress Bar */}
@@ -346,6 +452,10 @@ export function App() {
           <ScenarioInput
             onStartSimulation={handleStartSimulation}
             isLoading={isStarting}
+            onOpenKeyModal={() => setIsProviderModalOpen(true)}
+            userKeys={userKeys}
+            selectedProvider={selectedProvider}
+            selectedModel={selectedModel}
           />
         )}
 
@@ -428,6 +538,17 @@ export function App() {
           onClose={() => setIsExportOpen(false)}
         />
       )}
+
+      {/* Bring Your Own Key Modal */}
+      <AIProviderSetup
+        isOpen={isProviderModalOpen}
+        onClose={() => setIsProviderModalOpen(false)}
+        userKeys={userKeys}
+        onSaveKeys={handleSaveKeys}
+        selectedProvider={selectedProvider}
+        onSelectProvider={handleSelectProvider}
+        budgetConfig={budgetConfig}
+      />
     </div>
   );
 }

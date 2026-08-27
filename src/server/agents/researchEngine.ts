@@ -7,7 +7,7 @@ import {
   getExpertMeta, 
   EXPERT_ROLE_REGISTRY 
 } from '../../shared/types.ts';
-import { geminiPool } from '../geminiPool.ts';
+import { aiProviderManager } from '../providers/aiProviderManager.ts';
 import { getAgentSystemInstruction, buildResearchPrompt } from './agentPrompts.ts';
 import { generateHeuristicParsedScenario } from './scenarioParser.ts';
 
@@ -22,10 +22,10 @@ export async function runIndependentResearch(params: {
   const cohort: SelectedExpertConfig[] = (params.config.expertCohort && params.config.expertCohort.length > 0)
     ? params.config.expertCohort.filter(e => e.enabled)
     : [
-        { slotId: 'slot_1', roleId: 'historian', name: 'Dr. Alistair Vance', title: 'Senior Historical Causality Analyst', specialty: 'Divergence mechanics & institutional continuity', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_2', roleId: 'economist', name: 'Elena Rostova, Ph.D.', title: 'Macroeconomic & Trade Systems Modeler', specialty: 'Resource flows & production capacity', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_3', roleId: 'geopolitician', name: 'Cmdr. Marcus Sterling', title: 'Strategic Security Analyst', specialty: 'Sovereign entities & flashpoint conflicts', modelName: 'gemini-3.7-flash', enabled: true },
-        { slotId: 'slot_4', roleId: 'futurist', name: 'Dr. Maya Lin-Chen', title: 'Techno-Societal Evolution Strategist', specialty: 'Scientific paradigms & cultural shifts', modelName: 'gemini-3.7-flash', enabled: true }
+        { slotId: 'slot_1', roleId: 'historian', name: 'Dr. Alistair Vance', title: 'Senior Historical Causality Analyst', specialty: 'Divergence mechanics & institutional continuity', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true },
+        { slotId: 'slot_2', roleId: 'economist', name: 'Elena Rostova, Ph.D.', title: 'Macroeconomic & Trade Systems Modeler', specialty: 'Resource flows & production capacity', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true },
+        { slotId: 'slot_3', roleId: 'geopolitician', name: 'Cmdr. Marcus Sterling', title: 'Strategic Security Analyst', specialty: 'Sovereign entities & flashpoint conflicts', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true },
+        { slotId: 'slot_4', roleId: 'futurist', name: 'Dr. Maya Lin-Chen', title: 'Techno-Societal Evolution Strategist', specialty: 'Scientific paradigms & cultural shifts', provider: 'gemini', modelName: 'gemini-3.7-flash', enabled: true }
       ];
 
   const expertCount = Math.min(5, Math.max(2, cohort.length));
@@ -40,11 +40,13 @@ export async function runIndependentResearch(params: {
     const roleId = expert.roleId;
     const meta = getExpertMeta(roleId, expert.customDef);
     const startTime = Date.now();
+    const expertProvider = expert.provider || params.config.provider || 'gemini';
+    const expertModel = expert.modelName || params.config.modelName || 'gemini-3.7-flash';
 
-    params.onLog?.(roleId, `${meta.name} (${meta.title}) investigating causal impact on ${meta.focusAreas.slice(0, 2).join(', ')}...`, 'info');
+    params.onLog?.(roleId, `${meta.name} (${meta.title}) investigating causal impact on ${meta.focusAreas.slice(0, 2).join(', ')} via ${expertProvider.toUpperCase()} (${expertModel})...`, 'info');
 
     try {
-      if (geminiPool.isMockMode()) {
+      if (aiProviderManager.isMockMode()) {
         await new Promise((r) => setTimeout(r, 350 + Math.random() * 200));
         const packet = generateDynamicResearchPacket(expert, params.config, parsed);
         params.onLog?.(roleId, `Generated research dossier in ${Date.now() - startTime}ms (Thesis: "${packet.thesis.slice(0, 60)}...")`, 'success');
@@ -53,24 +55,29 @@ export async function runIndependentResearch(params: {
       }
 
       if (i > 0) {
-        await new Promise(r => setTimeout(r, 250));
+        await new Promise(r => setTimeout(r, 200));
       }
 
       const prompt = buildResearchPrompt(expert, params.config, parsed);
       const systemInstruction = getAgentSystemInstruction(expert, params.config.communicationStyle);
 
-      const result = await geminiPool.generateJSON<ResearchPacket>({
+      const result = await aiProviderManager.generateJSON<ResearchPacket>({
         role: roleId,
-        slotId: expert.slotId,
         prompt,
         systemInstruction,
-        model: expert.modelName || params.config.modelName || 'gemini-3.7-flash'
+        provider: expertProvider,
+        model: expertModel,
+        userKeys: params.config.userKeys,
+        budgetConfig: params.config.budgetConfig
       });
 
       const packet: ResearchPacket = {
         ...result.data,
         agent: roleId,
-        agentName: meta.name
+        agentName: meta.name,
+        provider: result.provider,
+        modelName: result.model,
+        fallbackUsed: result.fallbackUsed
       };
 
       params.onLog?.(roleId, `Completed structured analysis via ${result.slotName} (${result.latencyMs}ms)`, 'success');
@@ -81,6 +88,8 @@ export async function runIndependentResearch(params: {
         console.info(`[ResearchEngine] Generated calibrated dossier for ${roleId}`);
       }
       const fallbackPacket = generateDynamicResearchPacket(expert, params.config, parsed);
+      fallbackPacket.provider = expertProvider;
+      fallbackPacket.modelName = expertModel;
       params.onLog?.(roleId, `Generated research dossier in ${Date.now() - startTime}ms (Thesis: "${fallbackPacket.thesis.slice(0, 60)}...")`, 'success');
       packetMap[roleId] = fallbackPacket;
     }

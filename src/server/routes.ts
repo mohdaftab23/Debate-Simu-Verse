@@ -1,11 +1,44 @@
 import { Router, Request, Response } from 'express';
 import { simulationService } from './simulationService.ts';
 import { geminiPool } from './geminiPool.ts';
+import { aiProviderManager } from './providers/aiProviderManager.ts';
 import { PRESET_SCENARIOS } from '../shared/presets.ts';
-import { SimulationConfig, EXPERT_ROLE_REGISTRY } from '../shared/types.ts';
+import { SimulationConfig, EXPERT_ROLE_REGISTRY, ProviderType } from '../shared/types.ts';
 import { suggestExpertsForScenario } from './agents/expertRecommender.ts';
 
 export const apiRouter = Router();
+
+// Providers Registry & Models
+apiRouter.get('/providers', (req: Request, res: Response) => {
+  const models = aiProviderManager.listAllModels();
+  res.json({ success: true, providers: models });
+});
+
+// Test/Validate a user-provided API key
+apiRouter.post('/providers/test', async (req: Request, res: Response) => {
+  try {
+    const { provider, apiKey, model } = req.body;
+    if (!provider) {
+      return res.status(400).json({ success: false, error: 'Provider is required' });
+    }
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'API key is required for testing' });
+    }
+
+    const testResult = await aiProviderManager.validateKey(provider as ProviderType, apiKey, model);
+    res.json({ success: true, result: testResult });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      result: {
+        valid: false,
+        provider: req.body?.provider,
+        model: req.body?.model,
+        error: err?.message || 'Key validation failed'
+      }
+    });
+  }
+});
 
 // Presets
 apiRouter.get('/presets', (req: Request, res: Response) => {
@@ -20,7 +53,7 @@ apiRouter.get('/experts/library', (req: Request, res: Response) => {
 // Suggest Experts for a Scenario
 apiRouter.post('/simulations/suggest-experts', async (req: Request, res: Response) => {
   try {
-    const { scenarioTitle, scenarioDescription, count, modelName } = req.body;
+    const { scenarioTitle, scenarioDescription, count, modelName, provider, userKeys } = req.body;
     if (!scenarioTitle) {
       return res.status(400).json({ success: false, error: 'Scenario title is required' });
     }
@@ -28,7 +61,9 @@ apiRouter.post('/simulations/suggest-experts', async (req: Request, res: Respons
       scenarioTitle,
       scenarioDescription: scenarioDescription || '',
       count: count || 4,
-      modelName
+      modelName,
+      provider,
+      userKeys
     });
     res.json({ success: true, ...result });
   } catch (err: any) {
@@ -39,7 +74,7 @@ apiRouter.post('/simulations/suggest-experts', async (req: Request, res: Respons
 // Generate Conceptual World Map Cover Art & Prompt
 apiRouter.post('/simulations/generate-cover-art', async (req: Request, res: Response) => {
   try {
-    const { scenarioTitle, scenarioDescription, startingYear, endYear, style } = req.body;
+    const { scenarioTitle, scenarioDescription, startingYear, endYear, style, provider, modelName, userKeys } = req.body;
     if (!scenarioTitle) {
       return res.status(400).json({ success: false, error: 'Scenario title is required' });
     }
@@ -66,21 +101,24 @@ Return ONLY valid JSON matching this schema:
       artisticPrompt: `A dramatic high-contrast antique conceptual world map cover art for "${scenarioTitle}", featuring illuminated golden cartographic boundaries, intricate astrolabe compass rose, deep textured slate parchment, rich gold leaf highlights, glowing trade routes, and cinematic historical atmosphere.`
     };
 
-    if (!geminiPool.isMockMode()) {
+    if (!aiProviderManager.isMockMode() || (userKeys && Object.keys(userKeys).length > 0)) {
       try {
-        const response = await geminiPool.generateJSON<any>({
+        const response = await aiProviderManager.generateJSON<any>({
           role: 'futurist',
           systemInstruction: systemPrompt,
           prompt: `Scenario Title: ${scenarioTitle}\nDescription: ${scenarioDescription || ''}\nTimeframe: ${startingYear || 1880} to ${endYear || 1950}`,
+          provider: provider || 'gemini',
+          model: modelName,
+          userKeys,
           useHighThinking: false
         });
         const parsed = response.data;
         if (parsed && parsed.artisticPrompt) {
           aiMetadata = { ...aiMetadata, ...parsed };
         }
-      } catch (geminiErr: any) {
-        if (geminiErr?.message !== 'MOCK_FALLBACK_TRIGGER') {
-          console.info('Using procedural cartographic metadata fallback:', geminiErr?.message || geminiErr);
+      } catch (genErr: any) {
+        if (genErr?.message !== 'MOCK_FALLBACK_TRIGGER') {
+          console.info('Using procedural cartographic metadata fallback:', genErr?.message || genErr);
         }
       }
     }
@@ -96,7 +134,13 @@ Return ONLY valid JSON matching this schema:
 
 // System Status & Key Pool
 apiRouter.get('/system/status', (req: Request, res: Response) => {
-  res.json({ success: true, status: geminiPool.getStatus() });
+  res.json({
+    success: true,
+    status: {
+      ...geminiPool.getStatus(),
+      providerStatus: aiProviderManager.getStatus()
+    }
+  });
 });
 
 apiRouter.post('/system/toggle-mock', (req: Request, res: Response) => {
