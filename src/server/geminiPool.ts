@@ -44,7 +44,7 @@ export class GeminiClientPool {
   }
 
   private initializeKeys() {
-    const rawPrimary = process.env.GEMINI_API_KEY || '';
+    const rawPrimary = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
     const raw1 = process.env.GEMINI_API_KEY_1 || '';
     const raw2 = process.env.GEMINI_API_KEY_2 || '';
     const raw3 = process.env.GEMINI_API_KEY_3 || '';
@@ -64,13 +64,18 @@ export class GeminiClientPool {
     const hasAnyValidKey = !!(validPrimary || valid1 || valid2 || valid3 || valid4 || valid5);
     this.mockMode = process.env.MOCK_MODE === 'true' || !hasAnyValidKey;
 
+    const missingKeyReason = 'Gemini API key is not configured. Add GEMINI_API_KEY in the deployment environment.';
+    if (!hasAnyValidKey) {
+      console.warn(`[ChronosSim] ${missingKeyReason}`);
+    }
+
     this.slots = [
-      { id: 'slot_primary', name: 'Primary Slot (Synthesis)', model: this.synthesisModel, key: validPrimary || valid1, available: !!(validPrimary || valid1), requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
-      { id: 'slot_1', name: 'Model Slot 1 (Expert Alpha)', model: this.defaultModel, key: valid1 || validPrimary, available: !!(valid1 || validPrimary), requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
-      { id: 'slot_2', name: 'Model Slot 2 (Expert Beta)', model: this.defaultModel, key: valid2 || validPrimary, available: !!(valid2 || validPrimary), requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
-      { id: 'slot_3', name: 'Model Slot 3 (Expert Gamma)', model: this.defaultModel, key: valid3 || validPrimary, available: !!(valid3 || validPrimary), requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
-      { id: 'slot_4', name: 'Model Slot 4 (Expert Delta)', model: this.defaultModel, key: valid4 || validPrimary, available: !!(valid4 || validPrimary), requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
-      { id: 'slot_5', name: 'Model Slot 5 (Expert Epsilon)', model: this.defaultModel, key: valid5 || validPrimary, available: !!(valid5 || validPrimary), requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
+      { id: 'slot_primary', name: 'Primary Slot (Synthesis)', model: this.synthesisModel, key: validPrimary || valid1, available: !!(validPrimary || valid1), errorReason: (validPrimary || valid1) ? undefined : missingKeyReason, requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
+      { id: 'slot_1', name: 'Model Slot 1 (Expert Alpha)', model: this.defaultModel, key: valid1 || validPrimary, available: !!(valid1 || validPrimary), errorReason: (valid1 || validPrimary) ? undefined : missingKeyReason, requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
+      { id: 'slot_2', name: 'Model Slot 2 (Expert Beta)', model: this.defaultModel, key: valid2 || validPrimary, available: !!(valid2 || validPrimary), errorReason: (valid2 || validPrimary) ? undefined : missingKeyReason, requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
+      { id: 'slot_3', name: 'Model Slot 3 (Expert Gamma)', model: this.defaultModel, key: valid3 || validPrimary, available: !!(valid3 || validPrimary), errorReason: (valid3 || validPrimary) ? undefined : missingKeyReason, requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
+      { id: 'slot_4', name: 'Model Slot 4 (Expert Delta)', model: this.defaultModel, key: valid4 || validPrimary, available: !!(valid4 || validPrimary), errorReason: (valid4 || validPrimary) ? undefined : missingKeyReason, requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
+      { id: 'slot_5', name: 'Model Slot 5 (Expert Epsilon)', model: this.defaultModel, key: valid5 || validPrimary, available: !!(valid5 || validPrimary), errorReason: (valid5 || validPrimary) ? undefined : missingKeyReason, requestCount: 0, totalErrors: 0, lastUsedTimestamp: 0 },
     ];
   }
 
